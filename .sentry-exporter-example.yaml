@@ -1,0 +1,4 @@
+api_url: http://mysentry-instance.com/api/0/
+organisation_name: my-first-organisation
+timeout: "3"
+token: 12345abcdef67890ghijkl
