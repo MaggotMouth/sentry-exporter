@@ -30,9 +30,11 @@ import (
 var cfgFile string
 var logLevel string
 var logFormat string
+var token string
+var org string
 
-const version = "0.2.0"
-const buildDate = "2021/07/11 15:11"
+const version = "0.2.1"
+const buildDate = "2021/07/11 15:46"
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -70,6 +72,18 @@ func init() {
 		"logformat",
 		"text",
 		"set the log format. options: text|json",
+	)
+	rootCmd.PersistentFlags().StringVar(
+		&token,
+		"token",
+		"",
+		"Sentry token",
+	)
+	rootCmd.PersistentFlags().StringVar(
+		&org,
+		"organisation",
+		"",
+		"Sentry organisation to query for statistics",
 	)
 }
 
@@ -123,4 +137,12 @@ func initConfig() {
 	viper.SetDefault("ttl_organisation", 86400)
 	viper.SetDefault("ttl_projects", 600)
 	viper.SetDefault("ttl_teams", 3600)
+
+	if token != "" {
+		viper.SetDefault("token", token)
+	}
+
+	if org != "" {
+		viper.SetDefault("organisation_name", org)
+	}
 }
