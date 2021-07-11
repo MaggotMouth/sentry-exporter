@@ -169,7 +169,7 @@ func fetchTeams(client sentry.Client) {
 // Sentry API if the TTL has expired
 func fetchProjects(client sentry.Client) {
 	now := time.Now().Unix()
-	if now-lastScan["teamProjects"] <= viper.GetInt64("ttl_teams") {
+	if now-lastScan["teamProjects"] <= viper.GetInt64("ttl_projects") {
 		return
 	}
 	log.Info().Msg("Project TTL expired, refreshing")
@@ -180,10 +180,17 @@ func fetchProjects(client sentry.Client) {
 			log.Error().Err(err).Msg("Could not fetch team projects")
 		}
 	}
-	// TODO: Handle multiple pages
-	projects, _, err = client.GetOrgProjects(organisation)
-	if err != nil {
-		log.Error().Err(err).Msg("Could not fetch organisation projects")
+
+	projects = []sentry.Project{}
+	for ok := true; ok; {
+		results, link, err := client.GetOrgProjects(organisation)
+		if err != nil {
+			log.Error().Err(err).Msg("Could not fetch organisation projects")
+		}
+		projects = append(projects, results...)
+		if !link.Next.Results {
+			break
+		}
 	}
 	lastScan["teamProjects"] = time.Now().Unix()
 }

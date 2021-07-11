@@ -31,8 +31,8 @@ var cfgFile string
 var logLevel string
 var logFormat string
 
-const version = "0.1.0"
-const buildDate = "2021/07/07 22:18"
+const version = "0.2.0"
+const buildDate = "2021/07/11 15:11"
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
