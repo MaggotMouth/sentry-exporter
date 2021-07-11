@@ -1,6 +1,6 @@
 # Sentry Exporter
 
-Sentry Exporter exports metrics from your Sentry Organisation and pushes it to a Prometheus push gateway.
+Sentry Exporter exposes a `/metrics` endpoint that Prometheus can scrape to obtain information about all the projects and teams in your Sentry organisation.
 
 ## Setup
 
@@ -10,14 +10,28 @@ Alternatively you can specify the location of the settings file with the `--conf
 
 You can also specify any of the settings via ENV variables.
 
-### Settings
+### Settings file
 
 | Setting | ENV Var | Default | Description |
 | ------- | ------- | ------- | ----------- |
-| api_url | SENTRY_EXPORTER_API_URL | nil | URL that points to your Sentry API (typically this is left unspecified and internally defaults to `https://sentry.io/api/0/`)
+| api_url | SENTRY_EXPORTER_API_URL | https://sentry.io/api/0/ | URL that points to your Sentry API
+| listen_address | SENTRY_EXPORTER_LISTEN_ADDRESS | :9142 | Address to start the web server on
 | organisation_name | SENTRY_EXPORTER_ORGANISATION_NAME | "" | This is a **required** setting. The organisation slug for your account.  This is queried to extract a list of teams
-| timeout | SENTRY_EXPORTER_TIMEOUT | nil | The maximum amount of seconds to wait for the Sentry API to respond.  Internally this defaults to 1 minute
-| token | SENTRY_EXPORTER_TOKEN | nil | This is a **required** setting. It allows communication with the Sentry API. More details below
+| timeout | SENTRY_EXPORTER_TIMEOUT | 60 | The maximum amount of seconds to wait for the Sentry API to respond
+| token | SENTRY_EXPORTER_TOKEN | "" | This is a **required** setting. It allows communication with the Sentry API. More details below
+| ttl_organisation | SENTRY_EXPORTER_TTL_ORGANISATION | 86400 | The duration in seconds to hold organisation information in memory (no request to Sentry)
+| ttl_projects | SENTRY_EXPORTER_TTL_PROJECTS | 600 | The duration in seconds to hold project information in memory (no request to Sentry)
+| ttl_teams | SENTRY_EXPORTER_TTL_TEAMS | 3600 | The duration in seconds to hold team information in memory (no request to Sentry)
+
+
+### Command line parameters
+
+| Flag | Default | Description |
+| ---- | ------- | ----------- |
+| --config | $CURRENT_DIR/.sentry-exporter.yaml | Location of the configuration file to load
+| --loglevel | info | What level of logs should be exposed.  Options are trace, debug, info, warn, error, fatal or panic
+| --logformat | text | What format should logs be output as, human-friendly text, or computer-friendly json. Options are text or json
+
 
 ### Sentry Token
 
@@ -31,8 +45,24 @@ It will need the following permissions:
 
 ## Usage
 
-In order to query the Sentry API and push the metrics to Prometheus, the `sentry-exporter export` command needs to be run.
+`sentry-exporter listen` will start a web server.
 
-## What does it do exactly?
+## Metrics exposed
 
-The application will query Sentry (using your token) for all the teams in your organisation.  It will then query each team for a list of projects associated with that team.  Finally, it will query each project for a range of stats (received, rejected, blacklisted and generated).  It then pushes these stats to Prometheus with appropriate labels.
+| Metric | Labels | Detail |
+| ------ | ------ | ------ |
+| sentry_project_errors | organisation, project, query | Details the number of specific error types (query) encountered by a project in an organisation
+| sentry_project_info | organisation, project, team | A purely informational/helper metric to show which teams have which projects associated with them
+
+Example PromQL query showing the number of errors received for a particular team, broken down by project:
+```
+sentry_project_errors{query="received"} * on (project) group_left(team) sentry_project_info{team="example-team-1"}
+```
+
+
+## Thanks
+
+Thanks to the contributers of the following projects, without whom this project would not be possible:
+* [Cobra & Viper](https://github.com/spf13/cobra)
+* [Atlassian Sentry API](https://github.com/atlassian/go-sentry-api)
+* [Zerolog](https://github.com/rs/zerolog)
