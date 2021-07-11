@@ -144,7 +144,10 @@ func fetchOrganisation(client sentry.Client) {
 	var err error
 	organisation, err = client.GetOrganization(viper.GetString("organisation_name"))
 	if err != nil {
-		log.Error().Err(err).Msg("Could not fetch organisation")
+		log.Error().
+			Err(err).
+			Str("organisation", viper.GetString("organisation_name")).
+			Msg("Could not fetch organisation")
 	}
 	lastScan["organisation"] = time.Now().Unix()
 }
