@@ -33,8 +33,8 @@ var logFormat string
 var token string
 var org string
 
-const version = "0.2.0"
-const buildDate = "2021/07/11 15:11"
+const version = "0.2.1"
+const buildDate = "2021/07/11 15:46"
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
