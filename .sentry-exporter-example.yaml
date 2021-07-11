@@ -1,4 +1,8 @@
-api_url: http://mysentry-instance.com/api/0/
-organisation_name: my-first-organisation
-timeout: "3"
-token: 12345abcdef67890ghijkl
+api_url: http://mysentry-instance.com/api/0/  # if not specified, defaults to https://sentry.io/api/0/
+listen_address: :8080                         # if not specified, defaults to :9142
+organisation_name: my-first-organisation      # required. TODO: Obtain this via API call for default
+timeout: 3                                    # if not specified, defaults to 60 seconds
+token: 12345abcdef67890ghijkl                 # required
+ttl_organisation: 600                         # if not specified, defaults to 86400 seconds (1 day)
+ttl_projects: 600                             # if not specified, defaults to 600 seconds (10 minutes)
+ttl_teams: 600                                # if not specified, defaults to 3600 seconds (1 hour)
