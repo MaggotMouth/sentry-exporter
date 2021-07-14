@@ -114,15 +114,19 @@ func (collector *sentryCollector) Collect(ch chan<- prometheus.Metric) {
 			wg.Add(1)
 			go func(p sentry.Project, q string) {
 				defer wg.Done()
-				count := fetchErrorCount(*client, p, q)
-				ch <- prometheus.MustNewConstMetric(
-					collector.projectErrors,
-					prometheus.GaugeValue,
-					count,
-					*organisation.Slug,
-					*p.Slug,
-					q,
-				)
+				count, err := fetchErrorCount(*client, p, q)
+				if err != nil {
+					log.Error().Err(err).Msg("Could not fetch project stats")
+				} else {
+					ch <- prometheus.MustNewConstMetric(
+						collector.projectErrors,
+						prometheus.GaugeValue,
+						count,
+						*organisation.Slug,
+						*p.Slug,
+						q,
+					)
+				}
 			}(project, query)
 		}
 	}
@@ -192,23 +196,35 @@ func fetchProjects(client sentry.Client) {
 // fetchErrorCount queries the Sentry API for the error counts of the particular type
 // for the specified project.  If there are multiple 10s buckets returned, it adds them
 // together to return a single count.
-func fetchErrorCount(client sentry.Client, project sentry.Project, query string) float64 {
+func fetchErrorCount(client sentry.Client, project sentry.Project, query string) (float64, error) {
 	resolution := "10s"
 	var err error
-	c, err := client.GetProjectStats(
-		organisation,
-		project,
-		sentry.StatQuery(query),
-		lastScan["errors"],
-		time.Now().Unix(),
-		&resolution,
-	)
+	var c []sentry.Stat
+	// Retry 3 times to fetch stats if there's a failure, with a 3s break between retries
+	for i := 0; i < 3; i++ {
+		c, err = client.GetProjectStats(
+			organisation,
+			project,
+			sentry.StatQuery(query),
+			lastScan["errors"],
+			time.Now().Unix(),
+			&resolution,
+		)
+		if err != nil {
+			// sleep for 3 seconds and try again
+			log.Debug().Msg("Could not fetch stats. Retrying")
+			time.Sleep(time.Second * 3)
+		} else {
+			err = nil
+			break
+		}
+	}
 	if err != nil {
-		log.Error().Err(err).Msg("Could not fetch project stats")
+		return 0, err
 	}
 	var total float64
 	for _, count := range c {
 		total += count[1]
 	}
-	return total
+	return total, nil
 }
