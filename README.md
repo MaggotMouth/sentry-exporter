@@ -63,7 +63,12 @@ sentry_project_errors{query="received"} * on (project) group_left(team) sentry_p
 
 ## Thanks
 
-Thanks to the contributers of the following projects, without whom this project would not be possible:
+Thanks to the contributors of the following projects, without whom this project would not be possible:
 * [Cobra & Viper](https://github.com/spf13/cobra)
 * [Atlassian Sentry API](https://github.com/atlassian/go-sentry-api)
 * [Zerolog](https://github.com/rs/zerolog)
+
+
+[![Sentry](assets//sentry-wordmark-dark-202x60.png "Sentry")](https://sentry.io/)
+
+Special thanks to [Sentry.io](https://sentry.io/) for providing me with a sponsored account that I can thrash with errors for testing purposes.
