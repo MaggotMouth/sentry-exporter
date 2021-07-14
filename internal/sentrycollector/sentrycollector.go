@@ -28,7 +28,7 @@ import (
 
 var organisation sentry.Organization
 var teams []sentry.Team
-var projects = make(map[string]sentry.Project)
+var projects []sentry.Project
 var lastScan = make(map[string]int64)
 
 // sentryCollector implements the prometheus.Collector interface
@@ -175,15 +175,13 @@ func fetchProjects(client sentry.Client) {
 		return
 	}
 	log.Info().Msg("Project TTL expired, refreshing")
-	projects = map[string]sentry.Project{}
+	projects = []sentry.Project{}
 	for ok := true; ok; {
 		results, link, err := client.GetOrgProjects(organisation)
 		if err != nil {
 			log.Error().Err(err).Msg("Could not fetch organisation projects")
 		}
-		for _, p := range results {
-			projects[*p.Slug] = p
-		}
+		projects = append(projects, results...)
 		if !link.Next.Results {
 			break
 		}
