@@ -28,8 +28,7 @@ import (
 
 var organisation sentry.Organization
 var teams []sentry.Team
-var teamProjects = make(map[string][]sentry.Project)
-var projects []sentry.Project
+var projects = make(map[string]sentry.Project)
 var lastScan = make(map[string]int64)
 
 // sentryCollector implements the prometheus.Collector interface
@@ -92,14 +91,14 @@ func (collector *sentryCollector) Collect(ch chan<- prometheus.Metric) {
 	fetchTeams(*client)
 	fetchProjects(*client)
 
-	for team, projectList := range teamProjects {
-		for _, project := range projectList {
+	for _, team := range teams {
+		for _, project := range *team.Projects {
 			ch <- prometheus.MustNewConstMetric(
 				collector.projectInfo,
 				prometheus.CounterValue,
 				1,
 				*organisation.Slug,
-				team,
+				*team.Slug,
 				*project.Slug,
 			)
 		}
@@ -168,34 +167,28 @@ func fetchTeams(client sentry.Client) {
 	lastScan["teams"] = time.Now().Unix()
 }
 
-// fetchProjects updates the global teamProjects and projects objects from data obtained from the
+// fetchProjects updates the global projects object from data obtained from the
 // Sentry API if the TTL has expired
 func fetchProjects(client sentry.Client) {
 	now := time.Now().Unix()
-	if now-lastScan["teamProjects"] <= viper.GetInt64("ttl_projects") {
+	if now-lastScan["projects"] <= viper.GetInt64("ttl_projects") {
 		return
 	}
 	log.Info().Msg("Project TTL expired, refreshing")
-	var err error
-	for _, team := range teams {
-		teamProjects[*team.Slug], err = client.GetTeamProjects(organisation, team)
-		if err != nil {
-			log.Error().Err(err).Msg("Could not fetch team projects")
-		}
-	}
-
-	projects = []sentry.Project{}
+	projects = map[string]sentry.Project{}
 	for ok := true; ok; {
 		results, link, err := client.GetOrgProjects(organisation)
 		if err != nil {
 			log.Error().Err(err).Msg("Could not fetch organisation projects")
 		}
-		projects = append(projects, results...)
+		for _, p := range results {
+			projects[*p.Slug] = p
+		}
 		if !link.Next.Results {
 			break
 		}
 	}
-	lastScan["teamProjects"] = time.Now().Unix()
+	lastScan["projects"] = time.Now().Unix()
 }
 
 // fetchErrorCount queries the Sentry API for the error counts of the particular type
