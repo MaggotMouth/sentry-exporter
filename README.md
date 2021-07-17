@@ -31,6 +31,8 @@ You can also specify any of the settings via ENV variables.
 | Flag | Default | Description |
 | ---- | ------- | ----------- |
 | --config | $CURRENT_DIR/.sentry-exporter.yaml | Location of the configuration file to load
+| --include-projects | "" | Which projects should be included in the export
+| --include-teams | "" | Which teams should be included in the export
 | --loglevel | info | What level of logs should be exposed.  Options are trace, debug, info, warn, error, fatal or panic
 | --logformat | text | What format should logs be output as, human-friendly text, or computer-friendly json. Options are text or json
 | --token | "" | Allows you to specify the Sentry token via parameter instead of in config file
