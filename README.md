@@ -18,6 +18,7 @@ You can also specify any of the settings via ENV variables.
 | listen_address | SENTRY_EXPORTER_LISTEN_ADDRESS | :9142 | Address to start the web server on
 | organisation_name | SENTRY_EXPORTER_ORGANISATION_NAME | "" | This is a **required** setting. The organisation slug for your account.  This is queried to extract a list of teams
 | project_includes | SENTRY_EXPORTER_PROJECT_INCLUDES | "" | Comma separated list of project slugs to include in the export
+| team_includes | SENTRY_EXPORTER_TEAM_INCLUDES | "" | Comma separated list of team slugs to include in the export
 | timeout | SENTRY_EXPORTER_TIMEOUT | 60 | The maximum amount of seconds to wait for the Sentry API to respond
 | token | SENTRY_EXPORTER_TOKEN | "" | This is a **required** setting. It allows communication with the Sentry API. More details below
 | ttl_organisation | SENTRY_EXPORTER_TTL_ORGANISATION | 86400 | The duration in seconds to hold organisation information in memory (no request to Sentry)
@@ -30,6 +31,8 @@ You can also specify any of the settings via ENV variables.
 | Flag | Default | Description |
 | ---- | ------- | ----------- |
 | --config | $CURRENT_DIR/.sentry-exporter.yaml | Location of the configuration file to load
+| --include-projects | "" | Which projects should be included in the export
+| --include-teams | "" | Which teams should be included in the export
 | --loglevel | info | What level of logs should be exposed.  Options are trace, debug, info, warn, error, fatal or panic
 | --logformat | text | What format should logs be output as, human-friendly text, or computer-friendly json. Options are text or json
 | --token | "" | Allows you to specify the Sentry token via parameter instead of in config file

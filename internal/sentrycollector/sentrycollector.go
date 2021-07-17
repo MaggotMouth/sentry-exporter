@@ -27,10 +27,17 @@ import (
 	"github.com/spf13/viper"
 )
 
-var organisation sentry.Organization
-var teams []sentry.Team
-var projects []sentry.Project
-var lastScan = make(map[string]int64)
+var (
+	organisation    sentry.Organization
+	teams           []sentry.Team
+	projects        []sentry.Project
+	lastScan        = make(map[string]int64)
+	sentryClient    *sentry.Client
+	includeProjects []string
+	includeTeams    []string
+)
+
+const intialiseSentryError = "Could not initialise Sentry client"
 
 // sentryCollector implements the prometheus.Collector interface
 type sentryCollector struct {
@@ -56,18 +63,13 @@ func NewSentryCollector() *sentryCollector {
 	}
 }
 
-// Describe adds the series to the collector
-func (collector *sentryCollector) Describe(ch chan<- *prometheus.Desc) {
-	ch <- collector.projectInfo
-	ch <- collector.projectErrors
-}
+// GetSentryClient returns the instantiated sentry client if it exists, or creates
+// one for use throughout the package
+func GetSentryClient() (*sentry.Client, error) {
+	if sentryClient != nil {
+		return sentryClient, nil
+	}
 
-// Collect handles incoming metric requests
-func (collector *sentryCollector) Collect(ch chan<- prometheus.Metric) {
-	start := time.Now().Unix()
-	log.Debug().Int64("now", start).Msg("Compiling metrics")
-
-	// Create a Sentry client to query the API
 	var url *string
 	if viper.IsSet("api_url") {
 		uVal := viper.GetString("api_url")
@@ -84,51 +86,71 @@ func (collector *sentryCollector) Collect(ch chan<- prometheus.Metric) {
 		timeout,
 	)
 	if err != nil {
-		log.Error().Err(err).Msg("Could not initialise Sentry Client")
+		sentryClient = client
 	}
+	return client, err
+}
+
+// Describe adds the series to the collector
+func (collector *sentryCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- collector.projectInfo
+	ch <- collector.projectErrors
+}
+
+// Collect handles incoming metric requests
+func (collector *sentryCollector) Collect(ch chan<- prometheus.Metric) {
+	start := time.Now().Unix()
+	log.Debug().Int64("now", start).Msg("Compiling metrics")
 
 	// get a slice of projects to include if specified
-	var includeProjects []string
 	if viper.IsSet("include_projects") {
 		includeProjects = strings.Split(viper.GetString("include_projects"), ",")
 	}
 
-	// Compile the various metrics (if TTL hasn't expired)
-	fetchOrganisation(*client)
-	fetchTeams(*client)
-	fetchProjects(*client)
+	// get a slice of teams to include if specified
+	if viper.IsSet("include_teams") {
+		includeTeams = strings.Split(viper.GetString("include_teams"), ",")
+	}
 
-	exportTeams(includeProjects, collector, ch)
-	exportProjects(includeProjects, collector, ch, client)
+	// Compile the various metrics (if TTL hasn't expired)
+	fetchOrganisation()
+	fetchTeams()
+	fetchProjects()
+
+	exportTeams(collector, ch)
+	exportProjects(collector, ch)
 
 	end := time.Now().Unix()
 	log.Debug().Int64("now", end).Int64("duration", end-start).Msg("Done compiling metrics")
 }
 
 // exportTeams adds the sentry_project_info metric to the collector for export
-func exportTeams(includeProjects []string, collector *sentryCollector, ch chan<- prometheus.Metric) {
+func exportTeams(
+	collector *sentryCollector,
+	ch chan<- prometheus.Metric,
+) {
 	for _, team := range teams {
-		for _, project := range *team.Projects {
-			if len(includeProjects) == 0 || existsInSlice(*project.Slug, includeProjects) {
-				ch <- prometheus.MustNewConstMetric(
-					collector.projectInfo,
-					prometheus.CounterValue,
-					1,
-					*organisation.Slug,
-					*team.Slug,
-					*project.Slug,
-				)
+		if len(includeTeams) == 0 || existsInSlice(*team.Slug, includeTeams) {
+			for _, project := range *team.Projects {
+				if len(includeProjects) == 0 || existsInSlice(*project.Slug, includeProjects) {
+					ch <- prometheus.MustNewConstMetric(
+						collector.projectInfo,
+						prometheus.CounterValue,
+						1,
+						*organisation.Slug,
+						*team.Slug,
+						*project.Slug,
+					)
+				}
 			}
 		}
 	}
 }
 
-// exportProjects adds the sentry_project_errors metric to the collector for export
+// exportProjects adds the sentry_project_errors metrics to the collector for export
 func exportProjects(
-	includeProjects []string,
 	collector *sentryCollector,
 	ch chan<- prometheus.Metric,
-	client *sentry.Client,
 ) {
 	if lastScan["errors"] == 0 {
 		lastScan["errors"] = time.Now().Add(time.Second * -10).Unix()
@@ -138,29 +160,39 @@ func exportProjects(
 		queries := []string{"received", "rejected", "blacklisted", "generated"}
 		for _, query := range queries {
 			wg.Add(1)
-			go func(p sentry.Project, q string) {
-				defer wg.Done()
-				if len(includeProjects) == 0 || existsInSlice(*p.Slug, includeProjects) {
-					count, err := fetchErrorCount(*client, p, q)
-					if err != nil {
-						log.Error().Err(err).Msg("Could not fetch project stats")
-					} else {
-						ch <- prometheus.MustNewConstMetric(
-							collector.projectErrors,
-							prometheus.GaugeValue,
-							count,
-							*organisation.Slug,
-							*p.Slug,
-							q,
-						)
-					}
-
-				}
-			}(project, query)
+			go exportProject(&wg, project, query, collector, ch)
 		}
 	}
 	wg.Wait()
 	lastScan["errors"] = time.Now().Unix()
+}
+
+// exportProject exports the metrics for a single project and query type
+func exportProject(
+	wg *sync.WaitGroup,
+	p sentry.Project,
+	q string,
+	collector *sentryCollector,
+	ch chan<- prometheus.Metric,
+) {
+	defer wg.Done()
+	if (len(includeProjects) == 0 || existsInSlice(*p.Slug, includeProjects)) &&
+		(len(includeTeams) == 0 || isProjectInIncludedTeams(*p.Slug, includeTeams)) {
+		count, err := fetchErrorCount(p, q)
+		if err != nil {
+			log.Error().Err(err).Msg("Could not fetch project stats")
+		} else {
+			ch <- prometheus.MustNewConstMetric(
+				collector.projectErrors,
+				prometheus.GaugeValue,
+				count,
+				*organisation.Slug,
+				*p.Slug,
+				q,
+			)
+		}
+
+	}
 }
 
 // existsInSlice checks whether a specific string value exists in a string slice
@@ -173,15 +205,35 @@ func existsInSlice(value string, slice []string) bool {
 	return false
 }
 
+// isProjectInIncludedTeams checks whether at least one of the included teams is linked
+// to the project specified
+func isProjectInIncludedTeams(projectSlug string, includeTeams []string) bool {
+	for _, t := range teams {
+		if !existsInSlice(*t.Slug, includeTeams) {
+			continue
+		}
+		for _, p := range *t.Projects {
+			if *p.Slug == projectSlug {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // fetchOrganisation updates the global organisation object from data obtained from the
 // Sentry API if the TTL has expired
-func fetchOrganisation(client sentry.Client) {
+func fetchOrganisation() {
 	now := time.Now().Unix()
 	if now-lastScan["organisation"] <= viper.GetInt64("ttl_organisation") {
 		return
 	}
 	log.Info().Msg("Organisation TTL expired, refreshing")
-	var err error
+	// Create a Sentry client to query the API
+	client, err := GetSentryClient()
+	if err != nil {
+		log.Error().Err(err).Msg(intialiseSentryError)
+	}
 	organisation, err = client.GetOrganization(viper.GetString("organisation_name"))
 	if err != nil {
 		log.Error().
@@ -194,13 +246,17 @@ func fetchOrganisation(client sentry.Client) {
 
 // fetchTeams updates the global teams object from data obtained from the
 // Sentry API if the TTL has expired
-func fetchTeams(client sentry.Client) {
+func fetchTeams() {
 	now := time.Now().Unix()
 	if now-lastScan["teams"] <= viper.GetInt64("ttl_teams") {
 		return
 	}
 	log.Info().Msg("Teams TTL expired, refreshing")
-	var err error
+	// Create a Sentry client to query the API
+	client, err := GetSentryClient()
+	if err != nil {
+		log.Error().Err(err).Msg(intialiseSentryError)
+	}
 	teams, err = client.GetOrganizationTeams(organisation)
 	if err != nil {
 		log.Error().Err(err).Msg("Could not fetch organisation teams")
@@ -210,13 +266,18 @@ func fetchTeams(client sentry.Client) {
 
 // fetchProjects updates the global projects object from data obtained from the
 // Sentry API if the TTL has expired
-func fetchProjects(client sentry.Client) {
+func fetchProjects() {
 	now := time.Now().Unix()
 	if now-lastScan["projects"] <= viper.GetInt64("ttl_projects") {
 		return
 	}
 	log.Info().Msg("Project TTL expired, refreshing")
 	projects = []sentry.Project{}
+	// Create a Sentry client to query the API
+	client, err := GetSentryClient()
+	if err != nil {
+		log.Error().Err(err).Msg(intialiseSentryError)
+	}
 	for ok := true; ok; {
 		results, link, err := client.GetOrgProjects(organisation)
 		if err != nil {
@@ -233,12 +294,22 @@ func fetchProjects(client sentry.Client) {
 // fetchErrorCount queries the Sentry API for the error counts of the particular type
 // for the specified project.  If there are multiple 10s buckets returned, it adds them
 // together to return a single count.
-func fetchErrorCount(client sentry.Client, project sentry.Project, query string) (float64, error) {
+func fetchErrorCount(project sentry.Project, query string) (float64, error) {
 	resolution := "10s"
 	var err error
 	var c []sentry.Stat
+	// Create a Sentry client to query the API
+	client, err := GetSentryClient()
+	if err != nil {
+		log.Error().Err(err).Msg(intialiseSentryError)
+	}
 	// Retry 3 times to fetch stats if there's a failure, with a 3s break between retries
 	for i := 0; i < 3; i++ {
+		log.Debug().
+			Str("project", *project.Slug).
+			Str("query", query).
+			Int("attempt", i+1).
+			Msg("Fetching error counts")
 		c, err = client.GetProjectStats(
 			organisation,
 			project,
