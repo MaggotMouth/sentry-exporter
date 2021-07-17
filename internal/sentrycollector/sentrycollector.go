@@ -37,6 +37,8 @@ var (
 	includeTeams    []string
 )
 
+const intialiseSentryError = "Could not initialise Sentry client"
+
 // sentryCollector implements the prometheus.Collector interface
 type sentryCollector struct {
 	projectInfo   *prometheus.Desc
@@ -230,7 +232,7 @@ func fetchOrganisation() {
 	// Create a Sentry client to query the API
 	client, err := GetSentryClient()
 	if err != nil {
-		log.Error().Err(err).Msg("Could not initialise Sentry Client")
+		log.Error().Err(err).Msg(intialiseSentryError)
 	}
 	organisation, err = client.GetOrganization(viper.GetString("organisation_name"))
 	if err != nil {
@@ -253,7 +255,7 @@ func fetchTeams() {
 	// Create a Sentry client to query the API
 	client, err := GetSentryClient()
 	if err != nil {
-		log.Error().Err(err).Msg("Could not initialise Sentry Client")
+		log.Error().Err(err).Msg(intialiseSentryError)
 	}
 	teams, err = client.GetOrganizationTeams(organisation)
 	if err != nil {
@@ -274,7 +276,7 @@ func fetchProjects() {
 	// Create a Sentry client to query the API
 	client, err := GetSentryClient()
 	if err != nil {
-		log.Error().Err(err).Msg("Could not initialise Sentry Client")
+		log.Error().Err(err).Msg(intialiseSentryError)
 	}
 	for ok := true; ok; {
 		results, link, err := client.GetOrgProjects(organisation)
@@ -299,7 +301,7 @@ func fetchErrorCount(project sentry.Project, query string) (float64, error) {
 	// Create a Sentry client to query the API
 	client, err := GetSentryClient()
 	if err != nil {
-		log.Error().Err(err).Msg("Could not initialise Sentry Client")
+		log.Error().Err(err).Msg(intialiseSentryError)
 	}
 	// Retry 3 times to fetch stats if there's a failure, with a 3s break between retries
 	for i := 0; i < 3; i++ {
