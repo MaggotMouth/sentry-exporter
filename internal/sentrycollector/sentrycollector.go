@@ -17,6 +17,7 @@
 package sentrycollector
 
 import (
+	"strings"
 	"sync"
 	"time"
 
@@ -86,6 +87,12 @@ func (collector *sentryCollector) Collect(ch chan<- prometheus.Metric) {
 		log.Error().Err(err).Msg("Could not initialise Sentry Client")
 	}
 
+	// get a slice of projects to include if specified
+	var includeProjects []string
+	if viper.IsSet("include_projects") {
+		includeProjects = strings.Split(viper.GetString("include_projects"), ",")
+	}
+
 	// Compile the various metrics (if TTL hasn't expired)
 	fetchOrganisation(*client)
 	fetchTeams(*client)
@@ -93,14 +100,16 @@ func (collector *sentryCollector) Collect(ch chan<- prometheus.Metric) {
 
 	for _, team := range teams {
 		for _, project := range *team.Projects {
-			ch <- prometheus.MustNewConstMetric(
-				collector.projectInfo,
-				prometheus.CounterValue,
-				1,
-				*organisation.Slug,
-				*team.Slug,
-				*project.Slug,
-			)
+			if len(includeProjects) == 0 || existsInSlice(*project.Slug, includeProjects) {
+				ch <- prometheus.MustNewConstMetric(
+					collector.projectInfo,
+					prometheus.CounterValue,
+					1,
+					*organisation.Slug,
+					*team.Slug,
+					*project.Slug,
+				)
+			}
 		}
 	}
 
@@ -114,18 +123,21 @@ func (collector *sentryCollector) Collect(ch chan<- prometheus.Metric) {
 			wg.Add(1)
 			go func(p sentry.Project, q string) {
 				defer wg.Done()
-				count, err := fetchErrorCount(*client, p, q)
-				if err != nil {
-					log.Error().Err(err).Msg("Could not fetch project stats")
-				} else {
-					ch <- prometheus.MustNewConstMetric(
-						collector.projectErrors,
-						prometheus.GaugeValue,
-						count,
-						*organisation.Slug,
-						*p.Slug,
-						q,
-					)
+				if len(includeProjects) == 0 || existsInSlice(*p.Slug, includeProjects) {
+					count, err := fetchErrorCount(*client, p, q)
+					if err != nil {
+						log.Error().Err(err).Msg("Could not fetch project stats")
+					} else {
+						ch <- prometheus.MustNewConstMetric(
+							collector.projectErrors,
+							prometheus.GaugeValue,
+							count,
+							*organisation.Slug,
+							*p.Slug,
+							q,
+						)
+					}
+
 				}
 			}(project, query)
 		}
@@ -134,6 +146,16 @@ func (collector *sentryCollector) Collect(ch chan<- prometheus.Metric) {
 	lastScan["errors"] = time.Now().Unix()
 	end := time.Now().Unix()
 	log.Debug().Int64("now", end).Int64("duration", end-start).Msg("Done compiling metrics")
+}
+
+// Check whether a specific string value exists in a string slice
+func existsInSlice(value string, slice []string) bool {
+	for _, s := range slice {
+		if s == value {
+			return true
+		}
+	}
+	return false
 }
 
 // fetchOrganisation updates the global organisation object from data obtained from the
