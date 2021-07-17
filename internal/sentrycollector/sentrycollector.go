@@ -136,7 +136,7 @@ func exportTeams(
 	}
 }
 
-// exportProjects adds the sentry_project_errors metric to the collector for export
+// exportProjects adds the sentry_project_errors metrics to the collector for export
 func exportProjects(
 	includeProjects []string,
 	includeTeams []string,
@@ -152,30 +152,42 @@ func exportProjects(
 		queries := []string{"received", "rejected", "blacklisted", "generated"}
 		for _, query := range queries {
 			wg.Add(1)
-			go func(p sentry.Project, q string) {
-				defer wg.Done()
-				if (len(includeProjects) == 0 || existsInSlice(*p.Slug, includeProjects)) &&
-					(len(includeTeams) == 0 || isProjectInIncludedTeams(*p.Slug, includeTeams)) {
-					count, err := fetchErrorCount(*client, p, q)
-					if err != nil {
-						log.Error().Err(err).Msg("Could not fetch project stats")
-					} else {
-						ch <- prometheus.MustNewConstMetric(
-							collector.projectErrors,
-							prometheus.GaugeValue,
-							count,
-							*organisation.Slug,
-							*p.Slug,
-							q,
-						)
-					}
-
-				}
-			}(project, query)
+			go exportProject(&wg, project, query, includeProjects, includeTeams, collector, ch, client)
 		}
 	}
 	wg.Wait()
 	lastScan["errors"] = time.Now().Unix()
+}
+
+// exportProject exports the metrics for a single project and query type
+func exportProject(
+	wg *sync.WaitGroup,
+	p sentry.Project,
+	q string,
+	includeProjects []string,
+	includeTeams []string,
+	collector *sentryCollector,
+	ch chan<- prometheus.Metric,
+	client *sentry.Client,
+) {
+	defer wg.Done()
+	if (len(includeProjects) == 0 || existsInSlice(*p.Slug, includeProjects)) &&
+		(len(includeTeams) == 0 || isProjectInIncludedTeams(*p.Slug, includeTeams)) {
+		count, err := fetchErrorCount(*client, p, q)
+		if err != nil {
+			log.Error().Err(err).Msg("Could not fetch project stats")
+		} else {
+			ch <- prometheus.MustNewConstMetric(
+				collector.projectErrors,
+				prometheus.GaugeValue,
+				count,
+				*organisation.Slug,
+				*p.Slug,
+				q,
+			)
+		}
+
+	}
 }
 
 // existsInSlice checks whether a specific string value exists in a string slice
@@ -270,6 +282,11 @@ func fetchErrorCount(client sentry.Client, project sentry.Project, query string)
 	var c []sentry.Stat
 	// Retry 3 times to fetch stats if there's a failure, with a 3s break between retries
 	for i := 0; i < 3; i++ {
+		log.Debug().
+			Str("project", *project.Slug).
+			Str("query", query).
+			Int("attempt", i+1).
+			Msg("Fetching error counts")
 		c, err = client.GetProjectStats(
 			organisation,
 			project,
