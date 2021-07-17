@@ -98,6 +98,15 @@ func (collector *sentryCollector) Collect(ch chan<- prometheus.Metric) {
 	fetchTeams(*client)
 	fetchProjects(*client)
 
+	exportTeams(includeProjects, collector, ch)
+	exportProjects(includeProjects, collector, ch, client)
+
+	end := time.Now().Unix()
+	log.Debug().Int64("now", end).Int64("duration", end-start).Msg("Done compiling metrics")
+}
+
+// exportTeams adds the sentry_project_info metric to the collector for export
+func exportTeams(includeProjects []string, collector *sentryCollector, ch chan<- prometheus.Metric) {
 	for _, team := range teams {
 		for _, project := range *team.Projects {
 			if len(includeProjects) == 0 || existsInSlice(*project.Slug, includeProjects) {
@@ -112,7 +121,15 @@ func (collector *sentryCollector) Collect(ch chan<- prometheus.Metric) {
 			}
 		}
 	}
+}
 
+// exportProjects adds the sentry_project_errors metric to the collector for export
+func exportProjects(
+	includeProjects []string,
+	collector *sentryCollector,
+	ch chan<- prometheus.Metric,
+	client *sentry.Client,
+) {
 	if lastScan["errors"] == 0 {
 		lastScan["errors"] = time.Now().Add(time.Second * -10).Unix()
 	}
@@ -144,11 +161,9 @@ func (collector *sentryCollector) Collect(ch chan<- prometheus.Metric) {
 	}
 	wg.Wait()
 	lastScan["errors"] = time.Now().Unix()
-	end := time.Now().Unix()
-	log.Debug().Int64("now", end).Int64("duration", end-start).Msg("Done compiling metrics")
 }
 
-// Check whether a specific string value exists in a string slice
+// existsInSlice checks whether a specific string value exists in a string slice
 func existsInSlice(value string, slice []string) bool {
 	for _, s := range slice {
 		if s == value {
