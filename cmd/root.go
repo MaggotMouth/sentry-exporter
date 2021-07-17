@@ -32,6 +32,8 @@ var logLevel string
 var logFormat string
 var token string
 var org string
+var projectIncludes string
+var teamIncludes string
 
 const version = "0.2.1"
 const buildDate = "2021/07/11 15:46"
@@ -84,6 +86,20 @@ func init() {
 		"organisation",
 		"",
 		"Sentry organisation to query for statistics",
+	)
+
+	rootCmd.PersistentFlags().StringVar(
+		&projectIncludes,
+		"include-projects",
+		"",
+		"projects to include in the export (default include all projects)",
+	)
+
+	rootCmd.PersistentFlags().StringVar(
+		&teamIncludes,
+		"include-teams",
+		"",
+		"teams to include in the export (default include all teams)",
 	)
 }
 
@@ -144,5 +160,13 @@ func initConfig() {
 
 	if org != "" {
 		viper.SetDefault("organisation_name", org)
+	}
+
+	if projectIncludes != "" {
+		viper.SetDefault("include_projects", projectIncludes)
+	}
+
+	if teamIncludes != "" {
+		viper.SetDefault("include_teams", teamIncludes)
 	}
 }

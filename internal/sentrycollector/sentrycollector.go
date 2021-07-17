@@ -93,31 +93,44 @@ func (collector *sentryCollector) Collect(ch chan<- prometheus.Metric) {
 		includeProjects = strings.Split(viper.GetString("include_projects"), ",")
 	}
 
+	// get a slice of teams to include if specified
+	var includeTeams []string
+	if viper.IsSet("include_teams") {
+		includeTeams = strings.Split(viper.GetString("include_teams"), ",")
+	}
+
 	// Compile the various metrics (if TTL hasn't expired)
 	fetchOrganisation(*client)
 	fetchTeams(*client)
 	fetchProjects(*client)
 
-	exportTeams(includeProjects, collector, ch)
-	exportProjects(includeProjects, collector, ch, client)
+	exportTeams(includeProjects, includeTeams, collector, ch)
+	exportProjects(includeProjects, includeTeams, collector, ch, client)
 
 	end := time.Now().Unix()
 	log.Debug().Int64("now", end).Int64("duration", end-start).Msg("Done compiling metrics")
 }
 
 // exportTeams adds the sentry_project_info metric to the collector for export
-func exportTeams(includeProjects []string, collector *sentryCollector, ch chan<- prometheus.Metric) {
+func exportTeams(
+	includeProjects []string,
+	includeTeams []string,
+	collector *sentryCollector,
+	ch chan<- prometheus.Metric,
+) {
 	for _, team := range teams {
-		for _, project := range *team.Projects {
-			if len(includeProjects) == 0 || existsInSlice(*project.Slug, includeProjects) {
-				ch <- prometheus.MustNewConstMetric(
-					collector.projectInfo,
-					prometheus.CounterValue,
-					1,
-					*organisation.Slug,
-					*team.Slug,
-					*project.Slug,
-				)
+		if len(includeTeams) == 0 || existsInSlice(*team.Slug, includeTeams) {
+			for _, project := range *team.Projects {
+				if len(includeProjects) == 0 || existsInSlice(*project.Slug, includeProjects) {
+					ch <- prometheus.MustNewConstMetric(
+						collector.projectInfo,
+						prometheus.CounterValue,
+						1,
+						*organisation.Slug,
+						*team.Slug,
+						*project.Slug,
+					)
+				}
 			}
 		}
 	}
@@ -126,6 +139,7 @@ func exportTeams(includeProjects []string, collector *sentryCollector, ch chan<-
 // exportProjects adds the sentry_project_errors metric to the collector for export
 func exportProjects(
 	includeProjects []string,
+	includeTeams []string,
 	collector *sentryCollector,
 	ch chan<- prometheus.Metric,
 	client *sentry.Client,
@@ -140,7 +154,8 @@ func exportProjects(
 			wg.Add(1)
 			go func(p sentry.Project, q string) {
 				defer wg.Done()
-				if len(includeProjects) == 0 || existsInSlice(*p.Slug, includeProjects) {
+				if (len(includeProjects) == 0 || existsInSlice(*p.Slug, includeProjects)) &&
+					(len(includeTeams) == 0 || isProjectInIncludedTeams(*p.Slug, includeTeams)) {
 					count, err := fetchErrorCount(*client, p, q)
 					if err != nil {
 						log.Error().Err(err).Msg("Could not fetch project stats")
@@ -168,6 +183,22 @@ func existsInSlice(value string, slice []string) bool {
 	for _, s := range slice {
 		if s == value {
 			return true
+		}
+	}
+	return false
+}
+
+// isProjectInIncludedTeams checks whether at least one of the included teams is linked
+// to the project specified
+func isProjectInIncludedTeams(projectSlug string, includeTeams []string) bool {
+	for _, t := range teams {
+		if !existsInSlice(*t.Slug, includeTeams) {
+			continue
+		}
+		for _, p := range *t.Projects {
+			if *p.Slug == projectSlug {
+				return true
+			}
 		}
 	}
 	return false

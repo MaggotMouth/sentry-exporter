@@ -27,8 +27,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-var projectIncludes string
-
 // listenCmd represents the listen command
 var listenCmd = &cobra.Command{
 	Use:   "listen",
@@ -44,23 +42,12 @@ This endpoint exposes metrics from the Sentry API`,
 func init() {
 	rootCmd.AddCommand(listenCmd)
 
-	rootCmd.PersistentFlags().StringVar(
-		&projectIncludes,
-		"include-projects",
-		"",
-		"projects to include in the export (default include all projects)",
-	)
-
 	collector := sentrycollector.NewSentryCollector()
 	prometheus.MustRegister(collector)
 }
 
 func startListener() {
 	address := viper.GetString("listen_address")
-
-	if projectIncludes != "" {
-		viper.SetDefault("include_projects", projectIncludes)
-	}
 
 	// Expose the registered metrics via HTTP.
 	http.Handle("/metrics", promhttp.HandlerFor(
