@@ -285,12 +285,13 @@ func fetchTeams() {
 	if err != nil {
 		log.Error().Err(err).Msg(intialiseSentryError)
 	}
-	teams, err = client.GetOrganizationTeams(organisation)
+	results, err := client.GetOrganizationTeams(organisation)
 	if err != nil {
 		log.Error().Err(err).Msg("Could not fetch organisation teams")
 		apiFailureCallCount++
 		return
 	}
+	teams = results
 	lastScan["teams"] = time.Now().Unix()
 	apiSuccessCallCount++
 }
@@ -308,12 +309,13 @@ func fetchProjects() {
 	if err != nil {
 		log.Error().Err(err).Msg(intialiseSentryError)
 	}
-	projects, _, err = client.GetOrgProjects(organisation)
+	results, _, err := client.GetOrgProjects(organisation)
 	if err != nil {
 		log.Error().Err(err).Msg("Could not fetch organisation projects")
 		apiFailureCallCount++
 
 	}
+	projects = results
 	apiSuccessCallCount++
 	lastScan["projects"] = time.Now().Unix()
 }
