@@ -46,6 +46,9 @@ jobs:
           name: sentry-exporter
           path: bin/sentry-exporter
       -
+        name: Display structure of downloaded files
+        run: ls -R
+      -
         name: Login to DockerHub
         uses: docker/login-action@v1
         with:
