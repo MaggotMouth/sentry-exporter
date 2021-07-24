@@ -39,11 +39,7 @@ var (
 	apiFailureCallCount float64
 )
 
-const (
-	intialiseSentryError = "Could not initialise Sentry client"
-	successStatus        = "success"
-	failureStatus        = "failure"
-)
+const intialiseSentryError = "Could not initialise Sentry client"
 
 // sentryCollector implements the prometheus.Collector interface
 type sentryCollector struct {
@@ -140,13 +136,13 @@ func (collector *sentryCollector) Collect(ch chan<- prometheus.Metric) {
 		collector.apiCalls,
 		prometheus.GaugeValue,
 		apiSuccessCallCount,
-		successStatus,
+		"success",
 	)
 	ch <- prometheus.MustNewConstMetric(
 		collector.apiCalls,
 		prometheus.GaugeValue,
 		apiFailureCallCount,
-		failureStatus,
+		"failure",
 	)
 
 	end := time.Now().Unix()
