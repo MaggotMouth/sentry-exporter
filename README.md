@@ -58,6 +58,7 @@ It will need the following permissions:
 | ------ | ------ | ------ |
 | sentry_project_errors | organisation, project, query | Details the number of specific error types (query) encountered by a project in an organisation
 | sentry_project_info | organisation, project, team | A purely informational/helper metric to show which teams have which projects associated with them
+| sentry_api_calls | status | Details the number of successful or failed calls made to the Sentry API
 
 Example PromQL query showing the number of errors received for a particular team, broken down by project:
 ```

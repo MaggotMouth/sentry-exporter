@@ -28,13 +28,15 @@ import (
 )
 
 var (
-	organisation    sentry.Organization
-	teams           []sentry.Team
-	projects        []sentry.Project
-	lastScan        = make(map[string]int64)
-	sentryClient    *sentry.Client
-	includeProjects []string
-	includeTeams    []string
+	organisation        sentry.Organization
+	teams               []sentry.Team
+	projects            []sentry.Project
+	lastScan            = make(map[string]int64)
+	sentryClient        *sentry.Client
+	includeProjects     []string
+	includeTeams        []string
+	apiSuccessCallCount float64
+	apiFailureCallCount float64
 )
 
 const intialiseSentryError = "Could not initialise Sentry client"
@@ -43,6 +45,7 @@ const intialiseSentryError = "Could not initialise Sentry client"
 type sentryCollector struct {
 	projectInfo   *prometheus.Desc
 	projectErrors *prometheus.Desc
+	apiCalls      *prometheus.Desc
 }
 
 // NewSentryCollector returns an instance of the sentryCollector
@@ -58,6 +61,12 @@ func NewSentryCollector() *sentryCollector {
 			"sentry_project_errors",
 			"Records the number of errors of a particular type for the specific project",
 			[]string{"organisation", "project", "query"},
+			nil,
+		),
+		apiCalls: prometheus.NewDesc(
+			"sentry_api_calls",
+			"Records the number of calls made from the exporter to the Sentry API",
+			[]string{"status"},
 			nil,
 		),
 	}
@@ -95,11 +104,14 @@ func GetSentryClient() (*sentry.Client, error) {
 func (collector *sentryCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- collector.projectInfo
 	ch <- collector.projectErrors
+	ch <- collector.apiCalls
 }
 
 // Collect handles incoming metric requests
 func (collector *sentryCollector) Collect(ch chan<- prometheus.Metric) {
 	start := time.Now().Unix()
+	apiSuccessCallCount = 0
+	apiFailureCallCount = 0
 	log.Debug().Int64("now", start).Msg("Compiling metrics")
 
 	// get a slice of projects to include if specified
@@ -119,6 +131,19 @@ func (collector *sentryCollector) Collect(ch chan<- prometheus.Metric) {
 
 	exportTeams(collector, ch)
 	exportProjects(collector, ch)
+
+	ch <- prometheus.MustNewConstMetric(
+		collector.apiCalls,
+		prometheus.GaugeValue,
+		apiSuccessCallCount,
+		"success",
+	)
+	ch <- prometheus.MustNewConstMetric(
+		collector.apiCalls,
+		prometheus.GaugeValue,
+		apiFailureCallCount,
+		"failure",
+	)
 
 	end := time.Now().Unix()
 	log.Debug().Int64("now", end).Int64("duration", end-start).Msg("Done compiling metrics")
@@ -240,8 +265,11 @@ func fetchOrganisation() {
 			Err(err).
 			Str("organisation", viper.GetString("organisation_name")).
 			Msg("Could not fetch organisation")
+		apiFailureCallCount++
+		return
 	}
 	lastScan["organisation"] = time.Now().Unix()
+	apiSuccessCallCount++
 }
 
 // fetchTeams updates the global teams object from data obtained from the
@@ -257,11 +285,15 @@ func fetchTeams() {
 	if err != nil {
 		log.Error().Err(err).Msg(intialiseSentryError)
 	}
-	teams, err = client.GetOrganizationTeams(organisation)
+	results, err := client.GetOrganizationTeams(organisation)
 	if err != nil {
 		log.Error().Err(err).Msg("Could not fetch organisation teams")
+		apiFailureCallCount++
+		return
 	}
+	teams = results
 	lastScan["teams"] = time.Now().Unix()
+	apiSuccessCallCount++
 }
 
 // fetchProjects updates the global projects object from data obtained from the
@@ -272,22 +304,19 @@ func fetchProjects() {
 		return
 	}
 	log.Info().Msg("Project TTL expired, refreshing")
-	projects = []sentry.Project{}
 	// Create a Sentry client to query the API
 	client, err := GetSentryClient()
 	if err != nil {
 		log.Error().Err(err).Msg(intialiseSentryError)
 	}
-	for ok := true; ok; {
-		results, link, err := client.GetOrgProjects(organisation)
-		if err != nil {
-			log.Error().Err(err).Msg("Could not fetch organisation projects")
-		}
-		projects = append(projects, results...)
-		if !link.Next.Results {
-			break
-		}
+	results, _, err := client.GetOrgProjects(organisation)
+	if err != nil {
+		log.Error().Err(err).Msg("Could not fetch organisation projects")
+		apiFailureCallCount++
+
 	}
+	projects = results
+	apiSuccessCallCount++
 	lastScan["projects"] = time.Now().Unix()
 }
 
@@ -320,10 +349,15 @@ func fetchErrorCount(project sentry.Project, query string) (float64, error) {
 		)
 		if err != nil {
 			// sleep for 3 seconds and try again
-			log.Debug().Msg("Could not fetch stats. Retrying")
+			log.Debug().
+				Str("project", *project.Slug).
+				Str("query", query).
+				Msg("Could not fetch stats. Retrying")
+			apiFailureCallCount++
 			time.Sleep(time.Second * 3)
 		} else {
 			err = nil
+			apiSuccessCallCount++
 			break
 		}
 	}
