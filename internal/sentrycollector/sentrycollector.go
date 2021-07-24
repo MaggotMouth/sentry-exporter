@@ -34,6 +34,7 @@ var (
 	lastScan            = make(map[string]int64)
 	sentryClient        *sentry.Client
 	includeProjects     []string
+	includeQueries      []string
 	includeTeams        []string
 	apiSuccessCallCount float64
 	apiFailureCallCount float64
@@ -124,6 +125,11 @@ func (collector *sentryCollector) Collect(ch chan<- prometheus.Metric) {
 		includeTeams = strings.Split(viper.GetString("include_teams"), ",")
 	}
 
+	// get a slice of queries to include if specified
+	if viper.IsSet("include_queries") {
+		includeQueries = strings.Split(viper.GetString("include_queries"), ",")
+	}
+
 	// Compile the various metrics (if TTL hasn't expired)
 	fetchOrganisation()
 	fetchTeams()
@@ -202,7 +208,8 @@ func exportProject(
 ) {
 	defer wg.Done()
 	if (len(includeProjects) == 0 || existsInSlice(*p.Slug, includeProjects)) &&
-		(len(includeTeams) == 0 || isProjectInIncludedTeams(*p.Slug, includeTeams)) {
+		(len(includeTeams) == 0 || isProjectInIncludedTeams(*p.Slug, includeTeams)) &&
+		(len(includeQueries) == 0 || existsInSlice(q, includeQueries)) {
 		count, err := fetchErrorCount(p, q)
 		if err != nil {
 			log.Error().Err(err).Msg("Could not fetch project stats")

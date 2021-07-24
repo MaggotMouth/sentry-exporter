@@ -34,6 +34,7 @@ var token string
 var org string
 var projectIncludes string
 var teamIncludes string
+var queryIncludes string
 
 const version = "0.2.1"
 const buildDate = "2021/07/11 15:46"
@@ -100,6 +101,13 @@ func init() {
 		"include-teams",
 		"",
 		"teams to include in the export (default include all teams)",
+	)
+
+	rootCmd.PersistentFlags().StringVar(
+		&queryIncludes,
+		"include-queries",
+		"",
+		"queries to include in the export (default include all teams)",
 	)
 }
 
@@ -168,5 +176,9 @@ func initConfig() {
 
 	if teamIncludes != "" {
 		viper.SetDefault("include_teams", teamIncludes)
+	}
+
+	if queryIncludes != "" {
+		viper.SetDefault("include_queries", queryIncludes)
 	}
 }
