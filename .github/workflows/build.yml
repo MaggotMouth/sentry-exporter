@@ -49,9 +49,6 @@ jobs:
           name: sentry-exporter
           path: bin/sentry-exporter
       -
-        name: Display structure of downloaded files
-        run: ls -R
-      -
         name: Login to DockerHub
         uses: docker/login-action@v1
         with:
@@ -59,9 +56,8 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       -
         name: Build and push
-        id: docker_build
         uses: docker/build-push-action@v2
         with:
           context: .
           push: true
-          tags: sentry-exporter:test
+          tags: maggotmouth/sentry-exporter:test
