@@ -14,6 +14,8 @@
    limitations under the License.
 */
 
+// Sentry Exporter exposes a /metrics endpoint that Prometheus can scrape to obtain
+// information about all the projects and teams in your Sentry organisation.
 package main
 
 import "github.com/MaggotMouth/sentry-exporter/cmd"
