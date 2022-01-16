@@ -14,6 +14,7 @@
    limitations under the License.
 */
 
+// sentrycollector is a Prometheus collector for a range of Sentry metrics.
 package sentrycollector
 
 import (
